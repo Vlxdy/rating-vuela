@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Arial, sans-serif;
+        color: #fff;
+        background: radial-gradient(circle at top, #334155 0%, #0f172a 45%, #020617 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .card {
+        width: min(940px, 100%);
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 24px;
+        backdrop-filter: blur(6px);
+        padding: 24px;
+      }
+
+      h1 { margin: 0; font-size: clamp(28px, 4vw, 44px); }
+      p { margin: 8px 0 0; color: #e2e8f0; }
+
+      .field { margin-top: 24px; }
+
+      input {
+        margin-top: 8px;
+        width: 100%;
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 12px;
+        padding: 12px;
+        font-size: 16px;
+      }
+
+      .grid {
+        margin-top: 28px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+      }
+
+      button.rating {
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 16px;
+        min-height: 160px;
+        background: rgba(255,255,255,0.1);
+        color: #fff;
+        cursor: pointer;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      button.rating:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      .success {
+        text-align: center;
+        padding: 44px 20px;
+      }
+
+      .error { margin-top: 16px; color: #fecaca; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main class="card" id="app"></main>
+
+    <script>
+      const state = {
+        code: (window.INITIAL_CODE || '').trim(),
+        submitting: false,
+        success: false,
+        error: ''
+      };
+
+      const ratings = [
+        { value: 'happy', emoji: '😃', label: 'Buena' },
+        { value: 'neutral', emoji: '😐', label: 'Regular' },
+        { value: 'sad', emoji: '😞', label: 'Mala' }
+      ];
+
+      const app = document.getElementById('app');
+
+      function render() {
+        if (state.success) {
+          app.innerHTML = `
+            <section class="success">
+              <h1>¡Gracias por tu evaluación!</h1>
+              <p>Tu respuesta ha sido registrada correctamente.</p>
+              <button class="rating" style="margin-top:20px;min-height:auto;padding:12px 20px" onclick="resetForm()">Volver</button>
+            </section>
+          `;
+          return;
+        }
+
+        app.innerHTML = `
+          <header>
+            <h1>Califica la atención recibida</h1>
+            <p>Tu opinión es importante para nosotros</p>
+          </header>
+
+          <div class="field">
+            <label for="codigoCliente">Código del cliente (opcional)</label>
+            <input id="codigoCliente" type="text" placeholder="Ingresa un código" value="${escapeHtml(state.code)}" ${state.submitting ? 'disabled' : ''} />
+          </div>
+
+          <div class="grid">
+            ${ratings.map(r => `
+              <button class="rating" ${state.submitting ? 'disabled' : ''} data-rating="${r.value}">
+                <div style="font-size:48px">${r.emoji}</div>
+                <div>${r.label}</div>
+              </button>
+            `).join('')}
+          </div>
+
+          ${state.error ? `<p class="error">${escapeHtml(state.error)}</p>` : ''}
+        `;
+
+        const input = document.getElementById('codigoCliente');
+        input.addEventListener('input', (e) => {
+          state.code = e.target.value;
+        });
+
+        app.querySelectorAll('[data-rating]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            submit(btn.getAttribute('data-rating'));
+          });
+        });
+      }
+
+      function submit(rating) {
+        if (state.submitting || state.success) return;
+
+        state.submitting = true;
+        state.error = '';
+        render();
+
+        const codeTrimmed = state.code.trim();
+        const payload = {
+          rating,
+          customerCode: codeTrimmed ? codeTrimmed : null,
+          createdAt: new Date().toISOString()
+        };
+
+        google.script.run
+          .withSuccessHandler((response) => {
+            if (!response || !response.success) {
+              state.error = (response && response.error) || 'No se pudo enviar la evaluación. Intenta nuevamente.';
+              state.submitting = false;
+              render();
+              return;
+            }
+
+            state.success = true;
+            state.submitting = false;
+            render();
+
+            setTimeout(() => {
+              resetForm();
+            }, 3000);
+          })
+          .withFailureHandler(() => {
+            state.error = 'No se pudo enviar la evaluación. Intenta nuevamente.';
+            state.submitting = false;
+            render();
+          })
+          .submitRating(payload);
+      }
+
+      function resetForm() {
+        state.success = false;
+        state.submitting = false;
+        state.error = '';
+        render();
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      render();
+    </script>
+  </body>
+</html>
